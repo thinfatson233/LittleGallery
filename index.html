@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Drive 小小图</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        
+        /* 图片展示区域 */
+        #viewer {
+            width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;
+            opacity: 0; transition: opacity 0.5s ease;
+            background-size: contain; background-repeat: no-repeat; background-position: center;
+            cursor: pointer;
+            z-index: 1;
+        }
+
+        /* 控件区域 */
+        #controls {
+            position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; z-index: 100;
+            opacity: 0; transition: opacity 0.3s;
+        }
+        body:hover #controls { opacity: 1; }
+        
+        /* 按钮样式 */
+        .btn {
+            background: rgba(0, 0, 0, 0.6); color: white; border: 1px solid rgba(255,255,255,0.3);
+            padding: 8px 16px; border-radius: 20px; text-decoration: none; font-size: 14px;
+            cursor: pointer; transition: background 0.2s;
+            user-select: none;
+        }
+        .btn:hover { background: rgba(0, 0, 0, 0.8); }
+
+        /* 加载文字 */
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; pointer-events: none; font-size: 14px; z-index: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">加载中...</div>
+
+    <div id="viewer" onclick="nextImage()"></div>
+
+    <div id="controls">
+        <a id="download-btn" class="btn" href="#" target="_blank" download>下载原图</a>
+        <div class="btn" onclick="nextImage()">刷新 / 下一张 (Space)</div>
+    </div>
+
+    <script>
+        // ================= 配置区域 (已自动填入) =================
+        const API_KEY = 'AIzaSyDT6fSZJUs034IvECx9IMttjRwF5VSuBmk'; 
+        const FOLDER_ID = '1IzYTYf77C4lSC7eDgqqFZUNeV-G7xlhs';
+        // =======================================================
+
+        let allFiles = [];
+        let unseenIndices = [];
+        
+        window.onload = function() {
+            // 启动画廊
+            initGallery();
+        };
+
+        async function initGallery() {
+            try {
+                // 1. 获取文件列表
+                allFiles = await fetchAllImages(API_KEY, FOLDER_ID);
+                if (allFiles.length === 0) {
+                    alert("文件夹为空或权限不足。请确保文件夹是 'Anyone with the link' 可见。");
+                    return;
+                }
+                // 2. 初始化随机池
+                resetShuffle();
+                // 3. 显示第一张
+                nextImage();
+            } catch (err) {
+                console.error(err);
+                alert("加载失败: " + err.message + "\n请检查 API Key 是否设置了正确的 HTTP Referrer 限制。");
+            }
+        }
+
+        async function fetchAllImages(apiKey, folderId) {
+            let files = [];
+            let pageToken = '';
+            const baseUrl = 'https://www.googleapis.com/drive/v3/files';
+            
+            // 这里的逻辑是确保只获取图片
+            const query = `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`;
+            const fields = 'nextPageToken, files(id, name, mimeType, webContentLink, thumbnailLink)';
+
+            do {
+                const url = `${baseUrl}?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(fields)}&key=${apiKey}&pageSize=1000&pageToken=${pageToken}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                if (data.files) files = files.concat(data.files);
+                pageToken = data.nextPageToken;
+            } while (pageToken);
+            return files;
+        }
+
+        function resetShuffle() {
+            unseenIndices = Array.from({length: allFiles.length}, (_, i) => i);
+            // Fisher-Yates 洗牌算法
+            for (let i = unseenIndices.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [unseenIndices[i], unseenIndices[j]] = [unseenIndices[j], unseenIndices[i]];
+            }
+        }
+
+        function nextImage() {
+            if (allFiles.length === 0) return;
+            document.getElementById('loading').style.display = 'block';
+            
+            if (unseenIndices.length === 0) resetShuffle();
+
+            const index = unseenIndices.pop();
+            const file = allFiles[index];
+            
+            // 获取最大分辨率 (s0)
+            let hdSrc = file.thumbnailLink;
+            if (hdSrc && hdSrc.includes('=')) {
+                hdSrc = hdSrc.substring(0, hdSrc.lastIndexOf('=')) + '=s0';
+            }
+
+            const img = new Image();
+            img.onload = () => {
+                const viewer = document.getElementById('viewer');
+                viewer.style.backgroundImage = `url('${hdSrc}')`;
+                viewer.style.opacity = 1;
+                document.getElementById('loading').style.display = 'none';
+            };
+            img.onerror = () => {
+                console.log("加载失败，跳过一张");
+                nextImage(); 
+            };
+            img.src = hdSrc;
+
+            const downloadBtn = document.getElementById('download-btn');
+            downloadBtn.href = file.webContentLink;
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') { e.preventDefault(); nextImage(); }
+        });
+    </script>
+</body>
+</html>
