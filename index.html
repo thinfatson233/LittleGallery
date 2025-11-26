@@ -46,6 +46,7 @@
     <div id="viewer" onclick="nextImage()"></div>
 
     <div id="controls">
+        <div id="prev-btn" class="btn" onclick="prevImage()" style="display:none;">上一张</div> 
         <a id="download-btn" class="btn" href="#" target="_blank" download>下载原图</a>
         <div class="btn" onclick="nextImage()">刷新 / 下一张 (Space)</div>
     </div>
@@ -58,6 +59,8 @@
 
         let allFiles = [];
         let unseenIndices = [];
+        let historyStack = []; // ⭐ 新增：存储已浏览的图片文件对象
+        let currentFile = null; // ⭐ 新增：存储当前显示的图片文件对象
         
         window.onload = function() {
             // 启动画廊
@@ -111,15 +114,9 @@
             }
         }
 
-        function nextImage() {
-            if (allFiles.length === 0) return;
+        function renderImage(file) {
             document.getElementById('loading').style.display = 'block';
-            
-            if (unseenIndices.length === 0) resetShuffle();
 
-            const index = unseenIndices.pop();
-            const file = allFiles[index];
-            
             // 获取最大分辨率 (s0)
             let hdSrc = file.thumbnailLink;
             if (hdSrc && hdSrc.includes('=')) {
@@ -141,10 +138,53 @@
 
             const downloadBtn = document.getElementById('download-btn');
             downloadBtn.href = file.webContentLink;
+            
+            // ⭐ 更新“上一张”按钮显示状态
+            document.getElementById('prev-btn').style.display = historyStack.length > 0 ? 'block' : 'none';
+        }
+
+        // ⭐ 修改 nextImage() 函数
+        function nextImage() {
+            if (allFiles.length === 0) return;
+            
+            // 记录当前文件到历史堆栈，以便可以返回
+            if (currentFile) {
+                historyStack.push(currentFile);
+            }
+            
+            if (unseenIndices.length === 0) resetShuffle();
+
+            const index = unseenIndices.pop();
+            const file = allFiles[index];
+            currentFile = file; // 更新当前文件
+
+            renderImage(file);
+        }
+
+        // ⭐ 新增 prevImage() 函数
+        function prevImage() {
+            if (historyStack.length === 0) return;
+            
+            // 1. 将当前文件推回随机池（可选操作，防止它立即被下一张覆盖）
+            if (currentFile) {
+                const currentIndex = allFiles.findIndex(f => f.id === currentFile.id);
+                if (currentIndex !== -1) {
+                    unseenIndices.push(currentIndex); 
+                }
+            }
+            
+            // 2. 从历史记录中取出上一张文件
+            const file = historyStack.pop();
+            currentFile = file; // 更新当前文件
+
+            renderImage(file);
         }
 
         document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') { e.preventDefault(); nextImage(); }
+            if (e.code === 'Space') { 
+                e.preventDefault(); 
+                nextImage(); 
+            }
         });
     </script>
 </body>
